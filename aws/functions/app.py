@@ -17,8 +17,9 @@ logger.setLevel(logging.INFO)
 
 BEDROCK_MODEL_DEFAULT = "openai.gpt-oss-120b-1:0"
 OVERPASS_ENDPOINTS = (
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.openstreetmap.fr/api/interpreter",
 )
 BBOX_PATTERN = re.compile(r"^-?\d+\.?\d*,-?\d+\.?\d*,-?\d+\.?\d*,-?\d+\.?\d*$")
 EMAIL_PATTERN = re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+")
@@ -440,8 +441,8 @@ def _handle_overpass(event):
                 "Cache-Control": "public, max-age=300, stale-while-revalidate=600"
             })
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError,
-                UnicodeDecodeError, json.JSONDecodeError, ValueError):
-            logger.warning("Overpass endpoint failed: %s", endpoint)
+                UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
+            logger.warning("Overpass endpoint %s failed: %s", endpoint, error)
 
     return _response(502, {
         "error": "Building outline service is temporarily unavailable. Please try again in a moment."
