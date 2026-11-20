@@ -4997,6 +4997,10 @@
                         <label class="input-group" style="margin:0;font-size:11px;color:var(--text-muted);">Installed cost / W
                             <input id="installCostPerWatt" type="number" min="0.01" step="0.1" value="3" onchange="updateFinancialAssumptions()" style="margin-top:5px;">
                         </label>
+                        <label class="input-group" style="margin:0;font-size:11px;color:var(--text-muted);">Panel price / module (USD)
+                            <input id="panelPricePerModule" type="number" min="0" step="0.01" value="" placeholder="NY reference price" onchange="updateFinancialAssumptions()" style="margin-top:5px;">
+                            <small id="moduleCostEstimate" style="display:block;margin-top:4px;line-height:1.4;">A New York reference price will appear when the location is selected.</small>
+                        </label>
                         <label class="input-group" style="margin:0;font-size:11px;color:var(--text-muted);">Annual electricity use (kWh)
                             <input id="annualUsage" type="number" min="1" step="100" value="10000" onchange="updateFinancialAssumptions()" style="margin-top:5px;">
                         </label>
@@ -5010,7 +5014,7 @@
                             <input id="soilingLoss" type="number" min="0" max="30" step="0.5" value="3" onchange="updateFinancialAssumptions()" style="margin-top:5px;">
                         </label>
                     </div>
-                    <p style="font-size:10px;color:var(--text-muted);line-height:1.5;margin-top:9px;">Location presets are starting estimates only. Confirm local tariffs, incentives, installation quotes and export rules before making an investment decision.</p>
+                    <p id="marketDataSource" style="font-size:10px;color:var(--text-muted);line-height:1.5;margin-top:9px;">Location presets are starting estimates only. Confirm local tariffs, incentives, installation quotes and export rules before making an investment decision.</p>
                         </div>
                     </details>
 
@@ -5625,6 +5629,7 @@
             ae: { currency: 'AED', electricity: 0.30, export: 0.23, install: 2.2, usage: 13000, emissions: 0.42, soiling: 4 },
             in: { currency: 'INR', electricity: 8, export: 3, install: 50, usage: 6000, emissions: 0.71, soiling: 4 },
             us: { currency: 'USD', electricity: 0.16, export: 0.07, install: 3, usage: 10800, emissions: 0.39, soiling: 2 },
+            us_ny: { currency: 'USD', electricity: 0.2926, export: 0.07, install: 3, usage: 10800, emissions: 0.39, soiling: 2, panelPrice: 245.96 },
             gb: { currency: 'GBP', electricity: 0.29, export: 0.15, install: 1.8, usage: 3600, emissions: 0.21, soiling: 2 },
             au: { currency: 'AUD', electricity: 0.32, export: 0.07, install: 1.4, usage: 6000, emissions: 0.66, soiling: 2 },
             ca: { currency: 'CAD', electricity: 0.18, export: 0.08, install: 3, usage: 11000, emissions: 0.12, soiling: 2 },
@@ -5683,6 +5688,7 @@
                 electricityRate: Math.max(0, numericInput('electricityRate', 0.16)),
                 exportRate: Math.max(0, numericInput('exportRate', 0.05)),
                 installCostPerWatt: Math.max(0.01, numericInput('installCostPerWatt', 3)),
+                panelPricePerModule: Math.max(0, numericInput('panelPricePerModule', 0)),
                 annualUsage: Math.max(1, numericInput('annualUsage', 10000)),
                 selfConsumptionRate: Math.max(0, Math.min(1, numericInput('selfConsumptionRate', 70) / 100)),
                 gridEmissions: Math.max(0, numericInput('gridEmissions', 0.4)),
@@ -5690,8 +5696,8 @@
             };
         }
 
-        function formatMoney(value, maximumFractionDigits = 0) {
-            const currency = getPlanningAssumptions().currency;
+        function formatMoney(value, maximumFractionDigits = 0, currencyOverride = null) {
+            const currency = currencyOverride || getPlanningAssumptions().currency;
             try {
                 return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits }).format(value);
             } catch {
@@ -5699,34 +5705,44 @@
             }
         }
 
-        function applyCountryDefaults(countryCode) {
+        function applyCountryDefaults(countryCode, stateName = '') {
             const code = String(countryCode || '').toLowerCase();
             if (!code) return;
+            const state = String(stateName || '').trim().toLowerCase();
+            const isNewYork = code === 'us' && ['new york', 'new york state', 'ny'].includes(state);
             selectedCountryCode = code;
             const euroCountries = new Set(['at','be','cy','ee','es','fi','gr','hr','ie','it','lt','lu','lv','mt','nl','pt','si','sk']);
-            const preset = MARKET_PRESETS[code] || (euroCountries.has(code) ? MARKET_PRESETS.de : MARKET_PRESETS.default);
+            const preset = isNewYork ? MARKET_PRESETS.us_ny : (MARKET_PRESETS[code] || (euroCountries.has(code) ? MARKET_PRESETS.de : MARKET_PRESETS.default));
             const detectedCurrency = COUNTRY_CURRENCY[code] || preset.currency;
             document.getElementById('currencyCode').value = detectedCurrency;
             document.getElementById('electricityRate').value = preset.electricity;
             document.getElementById('exportRate').value = preset.export;
             document.getElementById('installCostPerWatt').value = preset.install;
+            document.getElementById('panelPricePerModule').value = preset.panelPrice || '';
             document.getElementById('annualUsage').value = preset.usage;
             document.getElementById('gridEmissions').value = preset.emissions;
             document.getElementById('soilingLoss').value = preset.soiling;
             const currencyStatus = document.getElementById('currencyAutoStatus');
-            if (currencyStatus) currencyStatus.textContent = `${detectedCurrency} detected · ${code.toUpperCase()}`;
+            if (currencyStatus) currencyStatus.textContent = `${detectedCurrency} detected · ${isNewYork ? 'New York, US' : code.toUpperCase()}`;
+            const sourceNote = document.getElementById('marketDataSource');
+            if (sourceNote) sourceNote.innerHTML = isNewYork
+                ? 'New York residential electricity average: <strong>$0.2926/kWh</strong> (EIA, Jan–Aug 2026). Reference module: Qcells Q.TRON BLK M-G2+ 430W, <strong>$245.96 each</strong> (A1 SolarStore listing, checked Nov 21, 2026). <a href="https://www.eia.gov/electricity/monthly/epm_table_grapher.php?t=table_5_06_b" target="_blank" rel="noopener noreferrer">EIA source</a> · <a href="https://a1solarstore.com/solar-panels/430-watt-solar-panels.html" target="_blank" rel="noopener noreferrer">Panel listing</a>. State-average rate; panel-only price excludes tax, shipping, and installation. Export credit and installed cost remain editable estimates.'
+                : 'Market assumptions are starting estimates. For New York, RoofGrid uses a dated EIA state-average rate and a retail panel listing; confirm your utility tariff, export rules, delivery, and installer quote before investing.';
             updateFinancialAssumptions(false);
         }
 
-        async function updateLocationAssumptions(countryCode) {
+        async function updateLocationAssumptions(countryCode, stateName = '') {
             currentTilt = Math.min(60, Math.max(0, Math.round(Math.abs(currentLat))));
             initTiltSlider();
-            if (countryCode) return applyCountryDefaults(countryCode);
+            const code = String(countryCode || '').toLowerCase();
+            if (code && (code !== 'us' || stateName)) return applyCountryDefaults(code, stateName);
             try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${currentLat}&lon=${currentLon}`);
                 const place = await response.json();
-                applyCountryDefaults(place.address?.country_code);
-            } catch { /* Manual assumptions remain available. */ }
+                applyCountryDefaults(place.address?.country_code || code, place.address?.state || stateName);
+            } catch {
+                if (code) applyCountryDefaults(code, stateName);
+            }
         }
 
         function updateFinancialAssumptions(recalculate = true) {
@@ -5905,12 +5921,13 @@
         }
 
         function computeSystemFromPanelCount(panelCount) {
-            const panelWattage = 550; // Modern high-efficiency panels
+            const assumptions = getPlanningAssumptions();
+            const panelWattage = 430; // Qcells Q.TRON BLK M-G2+ reference module
             const systemSizeKW = (panelCount * panelWattage) / 1000;
-            const costPerWattAED = getPlanningAssumptions().installCostPerWatt;
-            const systemCostAED = systemSizeKW * 1000 * costPerWattAED;
+            const systemCostAED = systemSizeKW * 1000 * assumptions.installCostPerWatt;
+            const panelEquipmentCost = panelCount * assumptions.panelPricePerModule;
             const netCostAED = systemCostAED;
-            return { systemSizeKW, systemCostAED, netCostAED, panelWattage };
+            return { systemSizeKW, systemCostAED, netCostAED, panelWattage, panelEquipmentCost };
         }
 
         function updateStats() {
@@ -5921,6 +5938,12 @@
             document.getElementById('sliderSystemSize').textContent = `${sizing.systemSizeKW.toFixed(1)} kW`;
             document.getElementById('sliderCoverage').textContent = `${coveragePercent}%`;
             document.getElementById('estCost').textContent = formatMoney(sizing.systemCostAED);
+            const moduleCostEstimate = document.getElementById('moduleCostEstimate');
+            if (moduleCostEstimate) {
+                moduleCostEstimate.textContent = sizing.panelEquipmentCost > 0
+                    ? `Module-only subtotal: ${formatMoney(sizing.panelEquipmentCost, 2, 'USD')} for ${currentPanelCount} panels; excluded from installed-cost estimate.`
+                    : 'A New York reference price will appear when the location is selected.';
+            }
             document.getElementById('panelsFit').textContent = `${actualPanelsFit} / ${currentPanelCount}`;
         }
 
@@ -6250,8 +6273,8 @@
             const angle = rotation * Math.PI / 180;
             const cosAngle = Math.cos(angle);
             const sinAngle = Math.sin(angle);
-            const panelWidth = 1.0;
-            const panelHeight = 1.7;
+            const panelWidth = 1.134; // Qcells reference module: 1134 x 1722 mm
+            const panelHeight = 1.722;
             const gap = 0.02;
             const stepU = panelWidth + gap;
             const stepV = panelHeight + gap;
@@ -6340,8 +6363,8 @@
             let bestFit = 0;
 
             const bbox = turf.bbox(roofPolygon);
-            const panelWidthM = 1.0;
-            const panelHeightM = 1.7;
+            const panelWidthM = 1.134;
+            const panelHeightM = 1.722;
             const gapM = 0.02;
 
             const mPerDegLat = 111320;
@@ -7334,7 +7357,7 @@
             currentLon = parseFloat(item.lon);
             locationChosen = true;
             setPlannerStage('roof');
-            updateLocationAssumptions(item.address?.country_code);
+            updateLocationAssumptions(item.address?.country_code, item.address?.state);
 
             map.setView([currentLat, currentLon], 19);
 
