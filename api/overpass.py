@@ -11,8 +11,9 @@ logger = logging.getLogger("roofgrid.overpass")
 
 REQUEST_TIMEOUT = 8
 OVERPASS_ENDPOINTS = (
+    "https://overpass.private.coffee/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
     "https://overpass-api.de/api/interpreter",
-    "https://overpass.openstreetmap.fr/api/interpreter",
 )
 
 # Regex to validate bbox format: "lat,lon,lat,lon" (four comma-separated numbers)
